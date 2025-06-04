@@ -1,80 +1,114 @@
-export const getImports = () => `import com.ctre.phoenix.motorcontrol.can.TalonFXS;
-import com.ctre.phoenix.motorcontrol.TalonFXControlMode;
-import com.ctre.phoenix.motorcontrol.NeutralMode;
-import com.ctre.phoenix.motorcontrol.TalonFXFeedbackDevice;
-import com.ctre.phoenix.motorcontrol.StatusFrameEnhanced;
-import com.ctre.phoenix.motorcontrol.SupplyCurrentLimitConfiguration;
-import com.ctre.phoenix.motorcontrol.StatorCurrentLimitConfiguration;`
+export const getImports = () => `
+import com.ctre.phoenix6.hardware.TalonFXS;
+import com.ctre.phoenix6.BaseStatusSignal;
+import com.ctre.phoenix6.StatusSignal;
+import com.ctre.phoenix6.controls.DutyCycleOut;
+import com.ctre.phoenix6.controls.PositionVoltage;
+import com.ctre.phoenix6.controls.VelocityVoltage;
+import com.ctre.phoenix6.signals.MotorArrangementValue;
+import com.ctre.phoenix6.signals.NeutralModeValue;
+import com.ctre.phoenix6.configs.TalonFXSConfiguration;
+import com.ctre.phoenix6.configs.Slot0Configs;
+import com.ctre.phoenix6.configs.CurrentLimitsConfigs;
+import com.ctre.phoenix6.configs.SoftwareLimitSwitchConfigs;
+import com.ctre.phoenix6.configs.OpenLoopRampsConfigs;
+import com.ctre.phoenix6.configs.ClosedLoopRampsConfigs;
+import edu.wpi.first.units.measure.*;
+`
 
-export const getDeclaration = () => `private final TalonFXS motor;`
+export const getDeclaration = () => `private final TalonFXS motor;
+private final PositionVoltage positionRequest;
+private final VelocityVoltage velocityRequest;
+private final DutyCycleOut dutyCycleRequest;
+private final StatusSignal<Angle> positionSignal;
+private final StatusSignal<AngularVelocity> velocitySignal;
+private final StatusSignal<Voltage> voltageSignal;
+private final StatusSignal<Current> statorCurrentSignal;
+private final StatusSignal<Temperature> temperatureSignal;
+`
 
 export const getInitialization = () => `motor = new TalonFXS(canID);
 
-// Factory reset
-motor.configFactoryDefault();
+// Create control requests
+positionRequest = new PositionVoltage(0).withSlot(0);
+velocityRequest = new VelocityVoltage(0).withSlot(0);
+dutyCycleRequest = new DutyCycleOut(0);
 
-// Configure feedback device
-motor.configSelectedFeedbackSensor(TalonFXFeedbackDevice.IntegratedSensor, 0, 30);
+// Track status signals
+positionSignal = motor.getPosition();
+velocitySignal = motor.getVelocity();
+voltageSignal = motor.getMotorVoltage();
+statorCurrentSignal = motor.getStatorCurrent();
+temperatureSignal = motor.getDeviceTemp();
 
-// Set PID for slot 0
-motor.config_kP(0, kP);
-motor.config_kI(0, kI);
-motor.config_kD(0, kD);
+TalonFXSConfiguration config = new TalonFXSConfiguration();
+config.Commutation.MotorArrangement = MotorArrangementValue.{{motorType}}_JST;
+
+// Configure PID for slot 0
+Slot0Configs slot0 = config.Slot0;
+slot0.kP = kP;
+slot0.kI = kI;
+slot0.kD = kD;
 
 // Set ramp rates
 {{#if enableOpenLoopRamp}}
-  motor.configOpenloopRamp(openLoopRampRate);
+  OpenLoopRampsConfigs openLoopRamps = config.OpenLoopRamps;
+  openLoopRamps.DutyCycleOpenLoopRampPeriod = openLoopRampRate;
 {{/if}}
 {{#if enableClosedLoopRamp}}
-  motor.configClosedloopRamp(closedLoopRampRate);
+  ClosedLoopRampsConfigs closedLoopRamps = config.ClosedLoopRamps;
+  closedLoopRamps.VoltageClosedLoopRampPeriod = closedLoopRampRate;
 {{/if}}
 
 // Set current limits
-{{#if enableStatorLimit}}
-  motor.configStatorCurrentLimit(new StatorCurrentLimitConfiguration(
-      true, statorCurrentLimit, statorCurrentLimit + 5, 0.5));
-{{/if}}
-
-{{#if enableSupplyLimit}}
-  motor.configSupplyCurrentLimit(new SupplyCurrentLimitConfiguration(
-      true, supplyCurrentLimit, supplyCurrentLimit + 5, 0.5));
-{{/if}}
+CurrentLimitsConfigs currentLimits = config.CurrentLimits;
+currentLimits.StatorCurrentLimit = statorCurrentLimit;
+currentLimits.StatorCurrentLimitEnable = enableStatorLimit;
+currentLimits.SupplyCurrentLimit = supplyCurrentLimit;
+currentLimits.SupplyCurrentLimitEnable = enableSupplyLimit;
 {{#if enableSoftLimits}}
 // Set soft limits
-  motor.configForwardSoftLimitThreshold(forwardSoftLimit * 2048.0 / (2.0 * Math.PI));
-  motor.configForwardSoftLimitEnable(true);
-  
-  motor.configReverseSoftLimitThreshold(reverseSoftLimit * 2048.0 / (2.0 * Math.PI));
-  motor.configReverseSoftLimitEnable(true);
+SoftwareLimitSwitchConfigs softLimits = config.SoftwareLimitSwitch;
+  softLimits.ForwardSoftLimitThreshold = forwardSoftLimit;
+  softLimits.ForwardSoftLimitEnable = true;
+  softLimits.ReverseSoftLimitThreshold = reverseSoftLimit;
+  softLimits.ReverseSoftLimitEnable = true;
 {{/if}}
 
 // Set brake mode
-motor.setNeutralMode(brakeMode ? NeutralMode.Brake : NeutralMode.Coast);
+config.MotorOutput.NeutralMode = brakeMode ? NeutralModeValue.Brake : NeutralModeValue.Coast;
+
+// Apply configuration
+motor.getConfigurator().apply(config);
 
 // Reset encoder position
-motor.setSelectedSensorPosition(0);`
+motor.setPosition(0);`
 
-export const getPeriodic = () => ``
-export const getSimulationPeriodic = () => ``
+export const getPeriodic = () => `BaseStatusSignal.refreshAll(positionSignal, velocitySignal, voltageSignal, statorCurrentSignal, temperatureSignal);`
+
+export const getSimulationPeriodic = () => `
+  motor.getSimState().setRawRotorPosition(motorPosition);
+  motor.getSimState().setRotorVelocity(motorVelocity);
+`
 
 export const getMethods = () => ({
-  getPositionMethod: `return motor.getSelectedSensorPosition() * (2.0 * Math.PI) / 2048.0 / gearRatio;`,
+  getPositionMethod: `return positionSignal.getValueAsDouble() / gearRatio;`,
 
-  getVelocityMethod: `return motor.getSelectedSensorVelocity() * (2.0 * Math.PI) / 2048.0 / gearRatio / 10.0;`,
+  getVelocityMethod: `return velocitySignal.getValueAsDouble() / gearRatio;`,
 
-  setPositionMethod: `double adjustedPosition = position * gearRatio * 2048.0 / (2.0 * Math.PI);
+  setPositionMethod: `double adjustedPosition = position * gearRatio;
 double ffVolts = feedforward.calculate(getVelocity(), acceleration);
-motor.set(TalonFXControlMode.Position, adjustedPosition, DemandType.ArbitraryFeedForward, ffVolts / 12.0);`,
+motor.setControl(positionRequest.withPosition(adjustedPosition).withFeedForward(ffVolts));`,
 
-  setVelocityMethod: `double adjustedVelocity = velocity * gearRatio * 2048.0 / (2.0 * Math.PI) * 10.0;
+  setVelocityMethod: `double adjustedVelocity = velocity * gearRatio;
 double ffVolts = feedforward.calculate(velocity, acceleration);
-motor.set(TalonFXControlMode.Velocity, adjustedVelocity, DemandType.ArbitraryFeedForward, ffVolts / 12.0);`,
+motor.setControl(velocityRequest.withVelocity(adjustedVelocity).withFeedForward(ffVolts));`,
 
-  setVoltageMethod: `motor.set(TalonFXControlMode.PercentOutput, voltage / 12.0);`,
+  setVoltageMethod: `motor.setVoltage(voltage);`,
 
-  getVoltageMethod: `return motor.getMotorOutputVoltage();`,
+  getVoltageMethod: `return voltageSignal.getValueAsDouble();`,
 
-  getCurrentMethod: `return motor.getStatorCurrent();`,
+  getCurrentMethod: `return statorCurrentSignal.getValueAsDouble();`,
 
-  getTemperatureMethod: `return motor.getTemperature();`,
+  getTemperatureMethod: `return temperatureSignal.getValueAsDouble();`,
 })
