@@ -1,49 +1,48 @@
-export const getImports = () => `import com.revrobotics.CANSparkFlex;
-import com.revrobotics.CANSparkBase.IdleMode;
-import com.revrobotics.CANSparkLowLevel.MotorType;
+export const getImports = () => `import com.revrobotics.spark.SparkFlex;
+import com.revrobotics.spark.SparkBase.PersistMode;
+import com.revrobotics.spark.SparkBase.ResetMode;
+import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
+import com.revrobotics.spark.SparkLowLevel.MotorType;
+import com.revrobotics.spark.config.SparkFlexConfig;
 import com.revrobotics.RelativeEncoder;
-import com.revrobotics.SparkPIDController;`
+import com.revrobotics.spark.SparkClosedLoopController;`
 
-export const getDeclaration = () => `private final CANSparkFlex motor;
-private final RelativeEncoder encoder;
-private final SparkPIDController pidController;`
+export const getDeclaration = () => `private final SparkFlex motor;
+private final RelativeEncoder encoder;`
 
-export const getInitialization = () => `motor = new CANSparkFlex(canID, MotorType.kBrushless);
-motor.restoreFactoryDefaults();
-motor.setIdleMode(brakeMode ? IdleMode.kBrake : IdleMode.kCoast);
+export const getInitialization = () => `SparkFlexConfig motorConfig = new SparkFlexConfig();
+motor = new SparkFlex(canID, MotorType.kBrushless);
+motorConfig.idleMode(brakeMode ? IdleMode.kBrake : IdleMode.kCoast);
 
 // Configure encoder
 encoder = motor.getEncoder();
 encoder.setPosition(0);
 
-// Configure PID controller
-pidController = motor.getPIDController();
-pidController.setP(kP);
-pidController.setI(kI);
-pidController.setD(kD);
-
 // Set ramp rates
 {{#if enableOpenLoopRamp}}
-  motor.setOpenLoopRampRate(openLoopRampRate);
+  motorConfig.openLoopRampRate(openLoopRampRate);
 {{/if}}
 {{#if enableClosedLoopRamp}}
-  motor.setClosedLoopRampRate(closedLoopRampRate);
+  motorConfig.closedLoopRampRate(closedLoopRampRate);
 {{/if}}
 
 // Set current limits
 {{#if enableStatorLimit}}
-  motor.setSmartCurrentLimit((int)statorCurrentLimit);
+ motorConfig.smartCurrentLimit(statorCurrentLimit);
 {{/if}}
+
 {{#if enableSoftLimits}}
 // Set soft limits
-  motor.setSoftLimit(CANSparkFlex.SoftLimitDirection.kForward, forwardSoftLimit.floatValue());
-  motor.enableSoftLimit(CANSparkFlex.SoftLimitDirection.kForward, true);
-  motor.setSoftLimit(CANSparkFlex.SoftLimitDirection.kReverse, reverseSoftLimit.floatValue());
-  motor.enableSoftLimit(CANSparkFlex.SoftLimitDirection.kReverse, true);
+  motorConfig
+  .softLimit
+  .forwardSoftLimit(forwardSoftLimit)
+  .forwardSoftLimitEnabled(true)
+  .reverseSoftLimit(reverseSoftLimit)
+  .reverseSoftLimitEnabled(true);
 {{/if}}
 
 // Save configuration
-motor.burnFlash();`
+motor.configure(motorConfig, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);`
 
 export const getPeriodic = () => ``
 export const getSimulationPeriodic = () => ``
@@ -54,7 +53,7 @@ export const getMethods = () => ({
   getVelocityMethod: `return encoder.getVelocity() / gearRatio / 60.0; // Convert from RPM to RPS`,
 
   setPositionMethod: `double adjustedPosition = position * gearRatio;
-pidController.setReference(adjustedPosition, CANSparkBase.ControlType.kPosition, 0, 
+profiledPIDController.setReference(adjustedPosition, CANSparkBase.ControlType.kPosition, 0, 
     feedforward.calculate(getVelocity(), acceleration));`,
 
   setVelocityMethod: `// This code is not used for SparkFlex as they use the control loop instead

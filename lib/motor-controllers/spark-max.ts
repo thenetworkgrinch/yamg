@@ -1,51 +1,49 @@
-export const getImports = () => `import com.revrobotics.CANSparkMax;
-import com.revrobotics.CANSparkBase.IdleMode;
-import com.revrobotics.CANSparkLowLevel.MotorType;
+export const getImports = () => `import com.revrobotics.spark.SparkMax;
+import com.revrobotics.spark.config.SparkBaseConfig.IdleMode;
+import com.revrobotics.spark.config.SparkMaxConfig;
+import com.revrobotics.spark.SparkBase.ResetMode;
+import com.revrobotics.spark.SparkBase.PersistMode;
+import com.revrobotics.spark.SparkLowLevel.MotorType;
 import com.revrobotics.RelativeEncoder;
-import com.revrobotics.SparkPIDController;`
+import com.revrobotics.spark.SparkClosedLoopController;`
 
-export const getDeclaration = () => `private final CANSparkMax motor;
-private final RelativeEncoder encoder;
-private final SparkPIDController pidController;`
 
-export const getInitialization = () => `motor = new CANSparkMax(canID, MotorType.kBrushless);
-motor.restoreFactoryDefaults();
-motor.setIdleMode(brakeMode ? IdleMode.kBrake : IdleMode.kCoast);
+export const getDeclaration = () => `private final SparkMax motor;
+private final RelativeEncoder encoder;`
+
+export const getInitialization = () => `SparkMaxConfig motorConfig = new SparkMaxConfig();
+motor = new SparkMax(canID, MotorType.kBrushless);
+motorConfig.idleMode(brakeMode ? IdleMode.kBrake : IdleMode.kCoast);
 
 // Configure encoder
 encoder = motor.getEncoder();
 encoder.setPosition(0);
 
-// Configure PID controller
-pidController = motor.getPIDController();
-pidController.setP(kP);
-pidController.setI(kI);
-pidController.setD(kD);
-
 // Set ramp rates
 {{#if enableOpenLoopRamp}}
-  motor.setOpenLoopRampRate({{openLoopRampRate}});
+  motorConfig.openLoopRampRate({{openLoopRampRate}});
 {{/if}}
 {{#if enableClosedLoopRamp}}
-  motor.setClosedLoopRampRate({{closedLoopRampRate}});
+  motorConfig.closedLoopRampRate({{closedLoopRampRate}});
 {{/if}}
 
 // Set current limits
 {{#if enableStatorLimit}}
-  motor.setSmartCurrentLimit({{statorCurrentLimit}});
+ motorConfig.smartCurrentLimit(statorCurrentLimit);
 {{/if}}
 
 // Set soft limits
 {{#if enableSoftLimits}}
-  motor.setSoftLimit(CANSparkMax.SoftLimitDirection.kForward, forwardSoftLimit.floatValue());
-  motor.enableSoftLimit(CANSparkMax.SoftLimitDirection.kForward, true);
-
-  motor.setSoftLimit(CANSparkMax.SoftLimitDirection.kReverse, reverseSoftLimit.floatValue());
-  motor.enableSoftLimit(CANSparkMax.SoftLimitDirection.kReverse, true);
+  motorConfig
+  .softLimit
+  .forwardSoftLimit(forwardSoftLimit)
+  .forwardSoftLimitEnabled(true)
+  .reverseSoftLimit(reverseSoftLimit)
+  .reverseSoftLimitEnabled(true);
 {{/if}}
 
 // Save configuration
-motor.burnFlash();`
+motor.configure(motorConfig, ResetMode.kResetSafeParameters, PersistMode.kPersistParameters);`
 
 export const getPeriodic = () => ``
 export const getSimulationPeriodic = () => ``
@@ -56,7 +54,7 @@ export const getMethods = () => ({
   getVelocityMethod: `return encoder.getVelocity() / gearRatio / 60.0; // Convert from RPM to RPS`,
 
   setPositionMethod: `double adjustedPosition = position * gearRatio;
-pidController.setReference(adjustedPosition, CANSparkBase.ControlType.kPosition, 0, 
+profiledPIDController.setReference(adjustedPosition, CANSparkBase.ControlType.kPosition, 0, 
     feedforward.calculate(getVelocity(), acceleration));`,
 
   setVelocityMethod: `// This code is not used for SparkMAX as they use the control loop instead
