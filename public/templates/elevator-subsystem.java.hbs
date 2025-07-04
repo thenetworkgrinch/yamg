@@ -20,7 +20,7 @@ import java.util.function.DoubleSupplier;
 /**
  * Elevator subsystem using {{motorControllerType}} with {{motorType}} motor
  */
-@Logged
+@Logged(name = "{{ntKey}}")
 public class {{subsystemName}} extends SubsystemBase {
   // Constants
   private final int canID = {{canId}};
@@ -177,28 +177,33 @@ public class {{subsystemName}} extends SubsystemBase {
  
   
   /**
-   * Get the current position in the selected unit.
-   * @return Position in selected unit
+   * Get the current position in the Rotations.
+   * @return Position in Rotations
    */
    {{#if logPosition}}
-   @Logged(name = "Position")
+   @Logged(name = "Position/Rotations")
    {{/if}}
   public double getPosition() {
-    {{#if (eq unitPosition "Rotations")}}
     // Rotations
       {{{getPositionMethod}}}
-    {{else if (eq unitPosition "Radians")}}
-    // Radians
-      return {{{getPositionMethod}}} * 2.0 * Math.PI;
-    {{else if (eq unitPosition "Degrees")}}
-    // Degrees
-      return {{{getPositionMethod}}} * 360.0;
-    {{else}}
-      // Rotations
-      {{{getPositionMethod}}}
-    {{/if}}
   }
 
+  {{#if (or (eq positionUnit 'Degrees') (eq positionUnit 'Radians'))}}
+  /**
+   * Get the current position in {{positionUnit}}.
+   * @return Position in {{positionUnit}}.
+   */
+  {{#if logPosition}}
+  @Logged(name = "Position/{{positionUnit}}")
+  {{/if}}
+public double getPosition{{positionUnit}}() {
+  {{#if (eq positionUnit 'Degrees')}}
+  return getPosition() * 360;
+  {{else}}
+  return getPosition() * 2 * Math.PI;
+  {{/if}}
+}
+{{/if}}
   
   /**
    * Get the current velocity in rotations per second.
